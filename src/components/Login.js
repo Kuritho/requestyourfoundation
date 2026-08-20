@@ -82,7 +82,7 @@ const Login = () => {
           <div className="brand-icon-wrapper">
             <span className="brand-icon">💄</span>
           </div>
-          <h1 className="brand-title">Foundation Lending</h1>
+          <h1 className="brand-title">CosmoLend</h1>
           <p className="brand-subtitle">Welcome back to your beauty destination</p>
         </div>
 
