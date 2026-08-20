@@ -109,7 +109,7 @@ const UserDashboard = () => {
       <nav className="navbar professional-navbar">
         <div className="nav-brand">
           <span className="brand-icon">💄</span>
-          <span>Foundation Lending</span>
+          <span>CosmoLend</span>
         </div>
         
         <div className="nav-desktop-links">
