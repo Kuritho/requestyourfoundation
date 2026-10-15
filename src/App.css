@@ -4276,3 +4276,698 @@ body {
     font-size: 12px;
   }
 }
+
+/* ============================================
+   FINGERPRINT MANAGEMENT
+   ============================================ */
+
+.admin-fingerprints {
+  padding: 0;
+}
+
+.fingerprint-users-section {
+  background: var(--white);
+  border-radius: var(--radius-md);
+  padding: 20px 24px;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid rgba(212, 165, 116, 0.08);
+}
+
+.fingerprint-users-section h3 {
+  font-size: 16px;
+  margin-bottom: 16px;
+  color: var(--dark);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fingerprint-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.fingerprint-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--cream);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--light-gray);
+  transition: var(--transition);
+}
+
+.fingerprint-card:hover {
+  border-color: var(--primary-light);
+  transform: translateY(-2px);
+}
+
+.fingerprint-card .fp-id {
+  background: var(--primary-gradient);
+  color: white;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.fingerprint-card .fp-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fingerprint-card .fp-info strong {
+  font-size: 13px;
+  color: var(--dark);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fingerprint-card .fp-info .role-badge {
+  font-size: 10px;
+  padding: 2px 8px;
+  align-self: flex-start;
+}
+
+.fingerprint-card .fp-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.fingerprint-card .fp-actions button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  font-size: 14px;
+  transition: var(--transition);
+  line-height: 1;
+}
+
+.fingerprint-card .fp-actions button:hover {
+  background: var(--light-gray);
+  transform: scale(1.15);
+}
+
+/* Event badges */
+.event-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.event-access_granted { background: #e8f5e9; color: #2e7d32; }
+.event-access_denied { background: #fdf2f2; color: #c62828; }
+.event-gate_opened { background: #e3f0fd; color: #0d47a1; }
+.event-alarm_triggered { background: #c62828; color: white; }
+.event-system_online { background: #e8f5e9; color: #2e7d32; }
+.event-system_offline { background: #f0f0f0; color: #888; }
+
+.fp-id-badge {
+  display: inline-block;
+  background: var(--light-gray);
+  color: var(--secondary-light);
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: 6px;
+}
+
+.log-filter {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.log-filter button {
+  padding: 6px 14px;
+  border: 2px solid var(--light-gray);
+  background: var(--white);
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--secondary-light);
+  transition: var(--transition);
+  font-family: inherit;
+}
+
+.log-filter button:hover {
+  border-color: var(--primary-light);
+  color: var(--primary-dark);
+}
+
+.log-filter button.active {
+  background: var(--primary-gradient);
+  border-color: transparent;
+  color: white;
+}
+
+/* Mobile */
+@media (max-width: 480px) {
+  .fingerprint-grid {
+    grid-template-columns: 1fr;
+  }
+  .fingerprint-card .fp-id {
+    width: 32px;
+    height: 32px;
+    font-size: 11px;
+  }
+}
+
+/* ============================================
+   FINGERPRINT REGISTRATION
+   ============================================ */
+
+.fp-register-card {
+  background: var(--white);
+  border-radius: var(--radius-lg);
+  padding: 32px;
+  max-width: 480px;
+  margin: 0 auto;
+  box-shadow: var(--shadow-md);
+  border: 1px solid rgba(212, 165, 116, 0.1);
+  text-align: center;
+  transition: var(--transition);
+}
+
+.fp-register-card.fp-success {
+  border: 2px solid var(--success);
+  background: linear-gradient(135deg, #f0f7f0, #ffffff);
+}
+
+.fp-register-card.fp-failed {
+  border: 2px solid var(--error);
+  background: linear-gradient(135deg, #fdf2f2, #ffffff);
+}
+
+.fp-register-card.fp-pending {
+  border: 2px solid var(--primary);
+  background: linear-gradient(135deg, #fdf8f5, #ffffff);
+}
+
+.fp-reg-icon {
+  font-size: 56px;
+  display: block;
+  margin-bottom: 16px;
+}
+
+.fp-reg-icon.fp-pulse {
+  animation: fp-pulse-anim 1.5s ease-in-out infinite;
+}
+
+@keyframes fp-pulse-anim {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.15); opacity: 0.7; }
+}
+
+.fp-register-card h3 {
+  font-size: 20px;
+  color: var(--dark);
+  margin-bottom: 12px;
+  font-weight: 700;
+}
+
+.fp-register-card p {
+  color: var(--secondary-light);
+  font-size: 14px;
+  line-height: 1.6;
+  margin-bottom: 16px;
+}
+
+.fp-reg-hint {
+  font-size: 12px;
+  color: var(--medium-gray);
+  font-style: italic;
+}
+
+.fp-device-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: var(--cream);
+  border-radius: 20px;
+  font-size: 13px;
+  color: var(--secondary-light);
+  margin-bottom: 20px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #888;
+}
+
+.status-dot.online {
+  background: var(--success);
+  box-shadow: 0 0 8px rgba(46, 125, 50, 0.6);
+  animation: dot-pulse 2s infinite;
+}
+
+.status-dot.offline {
+  background: var(--error);
+}
+
+@keyframes dot-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.fp-reg-btn-primary {
+  width: 100%;
+  padding: 14px 24px;
+  background: var(--primary-gradient);
+  color: var(--white);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  font-family: inherit;
+  letter-spacing: 0.3px;
+}
+
+.fp-reg-btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(212, 165, 116, 0.35);
+}
+
+.fp-reg-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.fp-reg-btn-secondary {
+  padding: 10px 20px;
+  background: var(--light-gray);
+  color: var(--dark);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  font-family: inherit;
+  margin-top: 8px;
+}
+
+.fp-reg-btn-secondary:hover {
+  background: var(--medium-gray);
+}
+
+.fp-reg-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 20px 0;
+  text-align: left;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: var(--radius-sm);
+}
+
+.fp-reg-steps span {
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--medium-gray);
+  background: var(--light-gray);
+  transition: var(--transition);
+}
+
+.fp-reg-steps span.active {
+  background: var(--primary-gradient);
+  color: white;
+  font-weight: 600;
+}
+
+/* ============================================
+   DEVICE PICKER
+   ============================================ */
+
+.fp-device-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 20px 0;
+  text-align: left;
+}
+
+.fp-device-option {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: var(--cream);
+  border: 2px solid var(--light-gray);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition);
+  text-align: left;
+  font-family: inherit;
+  width: 100%;
+  position: relative;
+}
+
+.fp-device-option:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: var(--white);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+
+.fp-device-option.selected {
+  border-color: var(--primary);
+  background: linear-gradient(135deg, #fdf8f5, #ffffff);
+  box-shadow: 0 0 0 3px rgba(212, 165, 116, 0.15);
+}
+
+.fp-device-option.offline {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--light-gray);
+}
+
+.fp-device-option .fp-device-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.fp-device-option .fp-device-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.fp-device-option .fp-device-info strong {
+  color: var(--dark);
+  font-size: 14px;
+}
+
+.fp-device-option .fp-device-location {
+  color: var(--medium-gray);
+  font-size: 12px;
+}
+
+.fp-device-option .fp-device-status {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+
+.fp-device-option .fp-device-status.online {
+  color: var(--success);
+}
+
+.fp-device-option .fp-device-status.offline {
+  color: var(--error);
+}
+
+.fp-device-option .fp-device-check {
+  color: var(--success);
+  font-size: 20px;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.fp-empty-devices {
+  padding: 20px;
+  text-align: center;
+  background: var(--cream);
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--light-gray);
+}
+
+.fp-empty-devices p {
+  color: var(--secondary-light);
+  margin-bottom: 4px;
+}
+
+.fp-empty-devices small {
+  color: var(--medium-gray);
+  font-size: 12px;
+}
+
+/* ============================================
+   DEVICE PICKER STYLES
+   ============================================ */
+
+.fp-device-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 20px 0;
+  text-align: left;
+}
+
+.fp-device-option {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: var(--cream);
+  border: 2px solid var(--light-gray);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition);
+  text-align: left;
+  font-family: inherit;
+  width: 100%;
+  position: relative;
+}
+
+.fp-device-option:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: var(--white);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+
+.fp-device-option.selected {
+  border-color: var(--primary);
+  background: linear-gradient(135deg, #fdf8f5, #ffffff);
+  box-shadow: 0 0 0 3px rgba(212, 165, 116, 0.15);
+}
+
+.fp-device-option.offline {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--light-gray);
+}
+
+.fp-device-option .fp-device-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.fp-device-option .fp-device-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.fp-device-option .fp-device-info strong {
+  color: var(--dark);
+  font-size: 14px;
+}
+
+.fp-device-option .fp-device-location {
+  color: var(--medium-gray);
+  font-size: 12px;
+}
+
+.fp-device-option .fp-device-status {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+
+.fp-device-option .fp-device-status.online {
+  color: var(--success);
+}
+
+.fp-device-option .fp-device-status.offline {
+  color: var(--error);
+}
+
+.fp-device-option .fp-device-check {
+  color: var(--success);
+  font-size: 20px;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.fp-empty-devices {
+  padding: 20px;
+  text-align: center;
+  background: var(--cream);
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--light-gray);
+}
+
+.fp-empty-devices p {
+  color: var(--secondary-light);
+  margin-bottom: 4px;
+}
+
+.fp-empty-devices small {
+  color: var(--medium-gray);
+  font-size: 12px;
+}
+
+/* ============================================
+   EXISTING FINGERPRINT DISPLAY
+   ============================================ */
+
+.fp-existing {
+  background: linear-gradient(135deg, #f0f7f0, #ffffff);
+  border: 2px solid var(--success);
+  border-radius: var(--radius-sm);
+  padding: 20px;
+  margin: 16px 0;
+  text-align: center;
+}
+
+.fp-existing-badge {
+  display: inline-block;
+  background: var(--success);
+  color: white;
+  padding: 4px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.fp-existing-info p {
+  color: var(--dark);
+  margin: 4px 0;
+  font-size: 14px;
+}
+
+.fp-existing-info .fp-reg-hint {
+  color: var(--medium-gray);
+  font-size: 12px;
+  margin-bottom: 16px;
+}
+
+/* ============================================
+   RESTRICT / UNRESTRICT BUTTONS
+   ============================================ */
+
+.btn-restrict {
+  background: var(--warning);
+  color: white;
+  padding: 5px 14px;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: var(--transition);
+  font-family: inherit;
+}
+
+.btn-restrict:hover:not(:disabled) {
+  background: #8a6400;
+  transform: translateY(-1px);
+}
+
+.btn-restrict:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ============================================
+   RESTRICTION LOGS SECTION
+   ============================================ */
+
+.restriction-logs-section {
+  background: var(--white);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid rgba(212, 165, 116, 0.08);
+  margin-top: 24px;
+  overflow: hidden;
+}
+
+.restriction-logs-section h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--dark);
+  padding: 16px 20px;
+  margin: 0;
+  border-bottom: 2px solid var(--light-gray);
+  background: var(--cream);
+}
+
+.restriction-logs-section .requests-table {
+  margin: 0;
+}
+
+/* Modal textarea */
+.modal-content textarea {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid var(--light-gray);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 80px;
+  transition: var(--transition);
+}
+
+.modal-content textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(212, 165, 116, 0.1);
+}
+
+/* Mobile responsive */
+@media (max-width: 480px) {
+  .restriction-logs-section h3 {
+    font-size: 14px;
+    padding: 12px 16px;
+  }
+
+  .restriction-logs-section .requests-table {
+    font-size: 12px;
+  }
+
+  .restriction-logs-section .requests-table th,
+  .restriction-logs-section .requests-table td {
+    padding: 8px 10px;
+  }
+}
