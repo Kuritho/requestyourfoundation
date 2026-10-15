@@ -5,6 +5,7 @@ import { supabase } from '../supabaseClient';
 import ManageRequests from './admin/ManageRequests';
 import ManageProducts from './admin/ManageProducts';
 import ManageUsers from './admin/ManageUsers';
+import ManageFingerprints from './admin/ManageFingerprints';
 
 const AdminDashboard = () => {
   const { signOut, isAdmin, user, userData } = useAuth();
@@ -14,16 +15,18 @@ const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('requests');
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [greeting, setGreeting] = useState('');
+  const [fpDeviceOnline, setFpDeviceOnline] = useState(false);
   const [stats, setStats] = useState({
     totalRequests: 0,
     pendingRequests: 0,
     totalUsers: 0,
     restrictedUsers: 0,
     totalProducts: 0,
+    totalFingerprints: 0,
     totalRevenue: 0
   });
 
-  // Set greeting based on time of day
+  // Greeting
   useEffect(() => {
     const hour = new Date().getHours();
     if (hour < 12) setGreeting('Good Morning');
@@ -31,23 +34,22 @@ const AdminDashboard = () => {
     else setGreeting('Good Evening');
   }, []);
 
-  // Redirect to user dashboard if not admin
+  // Redirect non-admin
   useEffect(() => {
-    if (user && !isAdmin) {
-      navigate('/dashboard', { replace: true });
-    }
+    if (user && !isAdmin) navigate('/dashboard', { replace: true });
   }, [isAdmin, user, navigate]);
 
-  // Set active tab based on current path
+  // Set active tab
   useEffect(() => {
     const path = location.pathname;
     if (path.includes('/admin/requests')) setActiveTab('requests');
     else if (path.includes('/admin/products')) setActiveTab('products');
     else if (path.includes('/admin/users')) setActiveTab('users');
+    else if (path.includes('/admin/fingerprints')) setActiveTab('fingerprints');
     else setActiveTab('requests');
   }, [location]);
 
-  // Fetch admin notifications
+  // Admin notifications
   useEffect(() => {
     if (!isAdmin) return;
 
@@ -58,10 +60,7 @@ const AdminDashboard = () => {
           .select('id', { count: 'exact', head: true })
           .eq('target_role', 'admin')
           .eq('is_read', false);
-
-        if (!error) {
-          setUnreadCount(count || 0);
-        }
+        if (!error) setUnreadCount(count || 0);
       } catch (error) {
         console.error('Error fetching admin notifications:', error);
       }
@@ -70,26 +69,16 @@ const AdminDashboard = () => {
     fetchAdminNotifications();
   }, [isAdmin]);
 
-  // Fetch dashboard stats
+  // Dashboard stats
   useEffect(() => {
     if (!isAdmin) return;
 
     const fetchStats = async () => {
       try {
-        // Get request stats
-        const { data: requests } = await supabase
-          .from('requests')
-          .select('status');
-
-        // Get user stats
-        const { data: users } = await supabase
-          .from('users')
-          .select('is_restricted');
-
-        // Get product stats
-        const { data: products } = await supabase
-          .from('products')
-          .select('is_active');
+        const { data: requests } = await supabase.from('requests').select('status');
+        const { data: users } = await supabase.from('users').select('is_restricted');
+        const { data: products } = await supabase.from('products').select('is_active');
+        const { data: fingerprints } = await supabase.from('fingerprints').select('id');
 
         const pendingRequests = requests?.filter(r => r.status === 'pending') || [];
         const restrictedUsers = users?.filter(u => u.is_restricted) || [];
@@ -101,7 +90,8 @@ const AdminDashboard = () => {
           totalUsers: users?.length || 0,
           restrictedUsers: restrictedUsers.length,
           totalProducts: activeProducts.length,
-          totalRevenue: 0 // Placeholder for future feature
+          totalFingerprints: fingerprints?.length || 0,
+          totalRevenue: 0
         });
       } catch (error) {
         console.error('Error fetching stats:', error);
@@ -111,7 +101,66 @@ const AdminDashboard = () => {
     fetchStats();
   }, [isAdmin]);
 
-  // Set up realtime subscription for admin notifications
+  // Fingerprint device status
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    const fetchFpDevice = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('fingerprint_devices')
+          .select('*');
+
+        if (!error && data && data.length > 0) {
+          const anyOnline = data.some((d) => {
+            return (
+              d.device_online &&
+              new Date() - new Date(d.last_heartbeat) < 60000
+            );
+          });
+          setFpDeviceOnline(anyOnline);
+        } else {
+          // Fallback to old table
+          const { data: oldData } = await supabase
+            .from('fingerprint_device')
+            .select('*')
+            .eq('id', 1)
+            .single();
+          if (oldData) {
+            const online = oldData.device_online &&
+              (new Date() - new Date(oldData.last_heartbeat)) < 60000;
+            setFpDeviceOnline(online);
+          }
+        }
+      } catch (error) {
+        setFpDeviceOnline(false);
+      }
+    };
+
+    fetchFpDevice();
+    const interval = setInterval(fetchFpDevice, 15000);
+
+    let channel = null;
+    try {
+      channel = supabase
+        .channel('fp-devices-admin')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'fingerprint_devices' },
+          () => fetchFpDevice()
+        )
+        .subscribe();
+    } catch (e) {
+      console.error('FP subscription error:', e);
+    }
+
+    return () => {
+      clearInterval(interval);
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [isAdmin]);
+
+  // Notifications realtime
   useEffect(() => {
     if (!isAdmin) return;
 
@@ -128,21 +177,15 @@ const AdminDashboard = () => {
             table: 'notifications',
             filter: 'target_role=eq.admin',
           },
-          (payload) => {
-            setUnreadCount(prev => prev + 1);
-          }
+          () => setUnreadCount(prev => prev + 1)
         )
-        .subscribe((status) => {
-          console.log('Admin subscription status:', status);
-        });
+        .subscribe();
     };
 
     setupSubscription();
 
     return () => {
-      if (channel) {
-        supabase.removeChannel(channel);
-      }
+      if (channel) supabase.removeChannel(channel);
     };
   }, [isAdmin]);
 
@@ -156,23 +199,19 @@ const AdminDashboard = () => {
     setShowMobileMenu(false);
   };
 
-  // If not admin, don't render admin dashboard
-  if (!isAdmin) {
-    return null;
-  }
+  if (!isAdmin) return null;
 
   return (
     <div className="admin-dashboard-container">
-      {/* Professional Admin Navbar */}
       <nav className="navbar admin-navbar professional-navbar">
         <div className="nav-brand">
           <span className="brand-icon">👑</span>
           <span>Admin Dashboard</span>
         </div>
-        
+
         <div className="nav-desktop-links">
-          <Link 
-            to="/admin/requests" 
+          <Link
+            to="/admin/requests"
             className={`nav-link ${activeTab === 'requests' ? 'active' : ''}`}
             onClick={() => handleTabChange('requests')}
           >
@@ -182,33 +221,48 @@ const AdminDashboard = () => {
               <span className="badge">{stats.pendingRequests}</span>
             )}
           </Link>
-          <Link 
-            to="/admin/products" 
+
+          <Link
+            to="/admin/products"
             className={`nav-link ${activeTab === 'products' ? 'active' : ''}`}
             onClick={() => handleTabChange('products')}
           >
             <span className="nav-icon">🛍️</span>
             Products
           </Link>
-          <Link 
-            to="/admin/users" 
+
+          <Link
+            to="/admin/users"
             className={`nav-link ${activeTab === 'users' ? 'active' : ''}`}
             onClick={() => handleTabChange('users')}
           >
             <span className="nav-icon">👤</span>
             Users
           </Link>
+
+          <Link
+            to="/admin/fingerprints"
+            className={`nav-link ${activeTab === 'fingerprints' ? 'active' : ''}`}
+            onClick={() => handleTabChange('fingerprints')}
+          >
+            <span className="nav-icon">🔐</span>
+            Fingerprints
+            {!fpDeviceOnline && (
+              <span className="badge" style={{ background: '#888' }}>?</span>
+            )}
+          </Link>
+
           {unreadCount > 0 && (
             <span className="badge notification-badge">{unreadCount}</span>
           )}
+
           <button className="nav-link logout" onClick={handleLogout}>
             <span className="nav-icon">🚪</span>
             Logout
           </button>
         </div>
 
-        {/* Mobile Menu Toggle */}
-        <button 
+        <button
           className="mobile-menu-toggle"
           onClick={() => setShowMobileMenu(!showMobileMenu)}
           aria-label="Toggle menu"
@@ -220,11 +274,10 @@ const AdminDashboard = () => {
           </span>
         </button>
 
-        {/* Mobile Menu */}
         {showMobileMenu && (
           <div className="mobile-menu">
-            <Link 
-              to="/admin/requests" 
+            <Link
+              to="/admin/requests"
               className={`mobile-nav-link ${activeTab === 'requests' ? 'active' : ''}`}
               onClick={() => handleTabChange('requests')}
             >
@@ -233,19 +286,29 @@ const AdminDashboard = () => {
                 <span className="badge">{stats.pendingRequests}</span>
               )}
             </Link>
-            <Link 
-              to="/admin/products" 
+            <Link
+              to="/admin/products"
               className={`mobile-nav-link ${activeTab === 'products' ? 'active' : ''}`}
               onClick={() => handleTabChange('products')}
             >
               <span className="nav-icon">🛍️</span> Products
             </Link>
-            <Link 
-              to="/admin/users" 
+            <Link
+              to="/admin/users"
               className={`mobile-nav-link ${activeTab === 'users' ? 'active' : ''}`}
               onClick={() => handleTabChange('users')}
             >
               <span className="nav-icon">👤</span> Users
+            </Link>
+            <Link
+              to="/admin/fingerprints"
+              className={`mobile-nav-link ${activeTab === 'fingerprints' ? 'active' : ''}`}
+              onClick={() => handleTabChange('fingerprints')}
+            >
+              <span className="nav-icon">🔐</span> Fingerprints
+              {!fpDeviceOnline && (
+                <span className="badge" style={{ background: '#888' }}>?</span>
+              )}
             </Link>
             <button className="mobile-nav-link logout" onClick={handleLogout}>
               <span className="nav-icon">🚪</span> Logout
@@ -255,7 +318,6 @@ const AdminDashboard = () => {
       </nav>
 
       <div className="admin-dashboard-content">
-        {/* Welcome Section */}
         <div className="welcome-section admin-welcome">
           <div className="welcome-content">
             <div className="welcome-text">
@@ -287,7 +349,6 @@ const AdminDashboard = () => {
           </div>
         </div>
 
-        {/* Stats Grid */}
         <div className="stats-grid admin-stats-grid">
           <div className="stat-card admin-stat-card">
             <div className="stat-icon">📋</div>
@@ -333,9 +394,19 @@ const AdminDashboard = () => {
               <span className="stat-change positive">All available</span>
             </div>
           </div>
+
+          <div className={`stat-card admin-stat-card ${fpDeviceOnline ? '' : 'restricted'}`}>
+            <div className="stat-icon">🔐</div>
+            <div className="stat-info">
+              <h3>{stats.totalFingerprints}</h3>
+              <p>Fingerprints</p>
+              <span className={`stat-change ${fpDeviceOnline ? 'positive' : 'danger'}`}>
+                {fpDeviceOnline ? 'Device online' : 'Device offline'}
+              </span>
+            </div>
+          </div>
         </div>
 
-        {/* Quick Actions */}
         <div className="quick-actions admin-quick-actions">
           <h3>⚡ Quick Actions</h3>
           <div className="action-grid">
@@ -354,23 +425,28 @@ const AdminDashboard = () => {
               <span className="action-icon">👤</span>
               <span className="action-text">Manage Users</span>
             </Link>
-            <Link to="/admin/users" className="quick-action-btn">
-              <span className="action-icon">🔓</span>
-              <span className="action-text">Unrestrict Users</span>
-              {stats.restrictedUsers > 0 && (
-                <span className="badge">{stats.restrictedUsers}</span>
+            <Link to="/admin/fingerprints" className="quick-action-btn">
+              <span className="action-icon">🔐</span>
+              <span className="action-text">Fingerprint Management</span>
+              {!fpDeviceOnline && (
+                <span className="badge" style={{ background: '#888' }}>?</span>
               )}
             </Link>
           </div>
         </div>
 
-        {/* Content Area */}
         <div className="admin-tab-content">
           <Routes>
-            <Route path="/" element={<AdminHome stats={stats} />} />
+            <Route
+              path="/"
+              element={
+                <AdminHome stats={stats} fpDeviceOnline={fpDeviceOnline} />
+              }
+            />
             <Route path="/requests" element={<ManageRequests />} />
             <Route path="/products" element={<ManageProducts />} />
             <Route path="/users" element={<ManageUsers />} />
+            <Route path="/fingerprints" element={<ManageFingerprints />} />
           </Routes>
         </div>
       </div>
@@ -378,16 +454,19 @@ const AdminDashboard = () => {
   );
 };
 
-const AdminHome = ({ stats }) => {
+const AdminHome = ({ stats, fpDeviceOnline }) => {
   const { userData } = useAuth();
-  
+
   return (
     <div className="admin-home-content">
       <div className="admin-home-grid">
         <div className="admin-welcome-card">
           <h3>📊 Dashboard Overview</h3>
-          <p>Welcome to your admin dashboard. Here's what's happening with your lending system.</p>
-          
+          <p>
+            Welcome to your admin dashboard. Here's what's happening with your
+            lending system.
+          </p>
+
           <div className="activity-list">
             <div className="activity-item">
               <span className="activity-icon">📋</span>
@@ -417,6 +496,18 @@ const AdminHome = ({ stats }) => {
                 <span>Total registered users</span>
               </div>
             </div>
+            <div className="activity-item">
+              <span className="activity-icon">
+                {fpDeviceOnline ? '🟢' : '🔴'}
+              </span>
+              <div className="activity-info">
+                <strong>{stats.totalFingerprints}</strong>
+                <span>
+                  Fingerprints ·{' '}
+                  {fpDeviceOnline ? 'Device online' : 'Device offline'}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -434,6 +525,10 @@ const AdminHome = ({ stats }) => {
             <li>
               <span className="tip-icon">🔒</span>
               <span>Manage restricted users and resolve issues promptly</span>
+            </li>
+            <li>
+              <span className="tip-icon">🔐</span>
+              <span>Rename fingerprint IDs to match real user names</span>
             </li>
             <li>
               <span className="tip-icon">📱</span>
