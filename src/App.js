@@ -1,5 +1,11 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+  useNavigate,
+} from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './components/Login';
 import Signup from './components/Signup';
@@ -65,48 +71,56 @@ function AppContent() {
   return (
     <div className="App">
       <Routes>
-        <Route 
-          path="/login" 
+        {/* Public Routes */}
+        <Route
+          path="/login"
           element={
             <AuthRoute>
               <Login />
             </AuthRoute>
-          } 
+          }
         />
-        <Route 
-          path="/signup" 
+        <Route
+          path="/signup"
           element={
             <AuthRoute>
               <Signup />
             </AuthRoute>
-          } 
+          }
         />
-        <Route 
-          path="/admin-setup" 
+        <Route
+          path="/admin-setup"
           element={
             <AuthRoute>
               <AdminSetup />
             </AuthRoute>
-          } 
+          }
         />
         <Route path="/terms" element={<Terms />} />
-        <Route 
-          path="/dashboard" 
+
+        {/* User Routes */}
+        <Route
+          path="/dashboard"
           element={
             <PrivateRoute>
               <UserDashboard />
             </PrivateRoute>
-          } 
+          }
         />
-        <Route 
-          path="/admin/*" 
+
+        {/* Admin Routes */}
+        <Route
+          path="/admin/*"
           element={
             <PrivateRoute adminOnly>
               <AdminDashboard />
             </PrivateRoute>
-          } 
+          }
         />
+
+        {/* Default & Fallback */}
         <Route path="/" element={<Navigate to="/dashboard" />} />
+        <Route path="*" element={<Navigate to="/dashboard" />} />
       </Routes>
     </div>
   );
