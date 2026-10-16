@@ -6,6 +6,7 @@ import ManageRequests from './admin/ManageRequests';
 import ManageProducts from './admin/ManageProducts';
 import ManageUsers from './admin/ManageUsers';
 import ManageFingerprints from './admin/ManageFingerprints';
+import ManageAlarms from './admin/ManageAlarms';
 
 const AdminDashboard = () => {
   const { signOut, isAdmin, user, userData } = useAuth();
@@ -16,6 +17,8 @@ const AdminDashboard = () => {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [greeting, setGreeting] = useState('');
   const [fpDeviceOnline, setFpDeviceOnline] = useState(false);
+  const [alarmActive, setAlarmActive] = useState(false);
+  const [vibrationToday, setVibrationToday] = useState(0);
   const [stats, setStats] = useState({
     totalRequests: 0,
     pendingRequests: 0,
@@ -23,10 +26,13 @@ const AdminDashboard = () => {
     restrictedUsers: 0,
     totalProducts: 0,
     totalFingerprints: 0,
+    totalAlarms: 0,
     totalRevenue: 0
   });
 
-  // Greeting
+  // ============================================
+  // GREETING
+  // ============================================
   useEffect(() => {
     const hour = new Date().getHours();
     if (hour < 12) setGreeting('Good Morning');
@@ -34,22 +40,29 @@ const AdminDashboard = () => {
     else setGreeting('Good Evening');
   }, []);
 
-  // Redirect non-admin
+  // ============================================
+  // REDIRECT NON-ADMIN
+  // ============================================
   useEffect(() => {
     if (user && !isAdmin) navigate('/dashboard', { replace: true });
   }, [isAdmin, user, navigate]);
 
-  // Set active tab
+  // ============================================
+  // SET ACTIVE TAB
+  // ============================================
   useEffect(() => {
     const path = location.pathname;
     if (path.includes('/admin/requests')) setActiveTab('requests');
     else if (path.includes('/admin/products')) setActiveTab('products');
     else if (path.includes('/admin/users')) setActiveTab('users');
     else if (path.includes('/admin/fingerprints')) setActiveTab('fingerprints');
+    else if (path.includes('/admin/alarms')) setActiveTab('alarms');
     else setActiveTab('requests');
   }, [location]);
 
-  // Admin notifications
+  // ============================================
+  // ADMIN NOTIFICATIONS
+  // ============================================
   useEffect(() => {
     if (!isAdmin) return;
 
@@ -69,7 +82,9 @@ const AdminDashboard = () => {
     fetchAdminNotifications();
   }, [isAdmin]);
 
-  // Dashboard stats
+  // ============================================
+  // DASHBOARD STATS
+  // ============================================
   useEffect(() => {
     if (!isAdmin) return;
 
@@ -79,10 +94,14 @@ const AdminDashboard = () => {
         const { data: users } = await supabase.from('users').select('is_restricted');
         const { data: products } = await supabase.from('products').select('is_active');
         const { data: fingerprints } = await supabase.from('fingerprints').select('id');
+        const { data: alarms } = await supabase
+          .from('alarm_logs')
+          .select('id, resolved');
 
         const pendingRequests = requests?.filter(r => r.status === 'pending') || [];
         const restrictedUsers = users?.filter(u => u.is_restricted) || [];
         const activeProducts = products?.filter(p => p.is_active) || [];
+        const unresolvedAlarms = alarms?.filter(a => !a.resolved) || [];
 
         setStats({
           totalRequests: requests?.length || 0,
@@ -91,6 +110,7 @@ const AdminDashboard = () => {
           restrictedUsers: restrictedUsers.length,
           totalProducts: activeProducts.length,
           totalFingerprints: fingerprints?.length || 0,
+          totalAlarms: unresolvedAlarms.length,
           totalRevenue: 0
         });
       } catch (error) {
@@ -101,7 +121,9 @@ const AdminDashboard = () => {
     fetchStats();
   }, [isAdmin]);
 
-  // Fingerprint device status
+  // ============================================
+  // FINGERPRINT DEVICE STATUS
+  // ============================================
   useEffect(() => {
     if (!isAdmin) return;
 
@@ -120,7 +142,6 @@ const AdminDashboard = () => {
           });
           setFpDeviceOnline(anyOnline);
         } else {
-          // Fallback to old table
           const { data: oldData } = await supabase
             .from('fingerprint_device')
             .select('*')
@@ -160,7 +181,65 @@ const AdminDashboard = () => {
     };
   }, [isAdmin]);
 
-  // Notifications realtime
+  // ============================================
+  // ALARM STATUS (live)
+  // ============================================
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    const fetchAlarmStatus = async () => {
+      try {
+        const { data } = await supabase
+          .from('gate_status')
+          .select('alarm_active, vibration_count_today, gate_open, device_online, last_heartbeat')
+          .eq('id', 1)
+          .single();
+
+        if (data) {
+          setAlarmActive(data.alarm_active || false);
+          setVibrationToday(data.vibration_count_today || 0);
+        }
+      } catch (e) {
+        // gate_status might not exist
+      }
+    };
+
+    fetchAlarmStatus();
+    const interval = setInterval(fetchAlarmStatus, 10000);
+
+    let channel = null;
+    try {
+      channel = supabase
+        .channel('gate-status-admin')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'gate_status' },
+          (payload) => {
+            if (payload.new) {
+              setAlarmActive(payload.new.alarm_active || false);
+              setVibrationToday(payload.new.vibration_count_today || 0);
+
+              // If alarm just started, log to console
+              if (payload.new.alarm_active) {
+                console.warn('🚨 ALARM TRIGGERED!');
+              }
+            }
+          }
+        )
+        .subscribe();
+    } catch (e) {
+      console.error('Alarm subscription error:', e);
+    }
+
+    return () => {
+      clearInterval(interval);
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [isAdmin]);
+
+  // ============================================
+  // NOTIFICATIONS REALTIME
+  // ============================================
   useEffect(() => {
     if (!isAdmin) return;
 
@@ -177,7 +256,20 @@ const AdminDashboard = () => {
             table: 'notifications',
             filter: 'target_role=eq.admin',
           },
-          () => setUnreadCount(prev => prev + 1)
+          (payload) => {
+            setUnreadCount(prev => prev + 1);
+
+            // If it's an alarm notification, trigger sound
+            if (payload.new?.message?.includes('ALARM')) {
+              try {
+                const audio = new Audio(
+                  'data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQBvT18AAAA='
+                );
+                audio.volume = 0.5;
+                audio.play().catch(() => {});
+              } catch (e) {}
+            }
+          }
         )
         .subscribe();
     };
@@ -189,6 +281,9 @@ const AdminDashboard = () => {
     };
   }, [isAdmin]);
 
+  // ============================================
+  // HANDLERS
+  // ============================================
   const handleLogout = async () => {
     await signOut();
     navigate('/login');
@@ -203,6 +298,9 @@ const AdminDashboard = () => {
 
   return (
     <div className="admin-dashboard-container">
+      {/* ============================================ */}
+      {/* PROFESSIONAL ADMIN NAVBAR */}
+      {/* ============================================ */}
       <nav className="navbar admin-navbar professional-navbar">
         <div className="nav-brand">
           <span className="brand-icon">👑</span>
@@ -252,6 +350,23 @@ const AdminDashboard = () => {
             )}
           </Link>
 
+          <Link
+            to="/admin/alarms"
+            className={`nav-link ${activeTab === 'alarms' ? 'active' : ''}`}
+            onClick={() => handleTabChange('alarms')}
+          >
+            <span className="nav-icon">🚨</span>
+            Alarms
+            {alarmActive && (
+              <span className="badge" style={{ background: '#c62828' }}>!</span>
+            )}
+            {!alarmActive && stats.totalAlarms > 0 && (
+              <span className="badge" style={{ background: '#b8860b' }}>
+                {stats.totalAlarms}
+              </span>
+            )}
+          </Link>
+
           {unreadCount > 0 && (
             <span className="badge notification-badge">{unreadCount}</span>
           )}
@@ -262,6 +377,7 @@ const AdminDashboard = () => {
           </button>
         </div>
 
+        {/* Mobile Menu Toggle */}
         <button
           className="mobile-menu-toggle"
           onClick={() => setShowMobileMenu(!showMobileMenu)}
@@ -274,6 +390,7 @@ const AdminDashboard = () => {
           </span>
         </button>
 
+        {/* Mobile Menu */}
         {showMobileMenu && (
           <div className="mobile-menu">
             <Link
@@ -310,6 +427,16 @@ const AdminDashboard = () => {
                 <span className="badge" style={{ background: '#888' }}>?</span>
               )}
             </Link>
+            <Link
+              to="/admin/alarms"
+              className={`mobile-nav-link ${activeTab === 'alarms' ? 'active' : ''}`}
+              onClick={() => handleTabChange('alarms')}
+            >
+              <span className="nav-icon">🚨</span> Alarms
+              {alarmActive && (
+                <span className="badge" style={{ background: '#c62828' }}>!</span>
+              )}
+            </Link>
             <button className="mobile-nav-link logout" onClick={handleLogout}>
               <span className="nav-icon">🚪</span> Logout
             </button>
@@ -318,12 +445,36 @@ const AdminDashboard = () => {
       </nav>
 
       <div className="admin-dashboard-content">
+        {/* ============================================ */}
+        {/* GLOBAL ALARM BANNER (shows on EVERY admin page) */}
+        {/* ============================================ */}
+        {alarmActive && (
+          <div className="alarm-banner">
+            <span className="alarm-icon">🚨</span>
+            <div className="alarm-text">
+              <strong>ALARM ACTIVE ON DEVICE</strong>
+              <span>
+                Vibration detected! The alarm is currently sounding on your gate.
+                Click "View" to see details or resolve.
+              </span>
+            </div>
+            <Link to="/admin/alarms" className="alarm-action-btn">
+              View →
+            </Link>
+          </div>
+        )}
+
+        {/* ============================================ */}
+        {/* WELCOME SECTION */}
+        {/* ============================================ */}
         <div className="welcome-section admin-welcome">
           <div className="welcome-content">
             <div className="welcome-text">
               <h1>
                 <span className="greeting">{greeting}</span>
-                <span className="user-name">{userData?.full_name || 'Administrator'}</span>
+                <span className="user-name">
+                  {userData?.full_name || 'Administrator'}
+                </span>
                 <span className="wave-emoji">👋</span>
               </h1>
               <p className="welcome-subtitle">
@@ -349,6 +500,9 @@ const AdminDashboard = () => {
           </div>
         </div>
 
+        {/* ============================================ */}
+        {/* STATS GRID */}
+        {/* ============================================ */}
         <div className="stats-grid admin-stats-grid">
           <div className="stat-card admin-stat-card">
             <div className="stat-icon">📋</div>
@@ -405,8 +559,22 @@ const AdminDashboard = () => {
               </span>
             </div>
           </div>
+
+          <div className={`stat-card admin-stat-card ${alarmActive ? 'restricted' : ''}`}>
+            <div className="stat-icon">{alarmActive ? '🚨' : '🔕'}</div>
+            <div className="stat-info">
+              <h3>{vibrationToday}</h3>
+              <p>Vibrations Today</p>
+              <span className={`stat-change ${alarmActive ? 'danger' : 'positive'}`}>
+                {alarmActive ? 'ALARM ACTIVE!' : 'All quiet'}
+              </span>
+            </div>
+          </div>
         </div>
 
+        {/* ============================================ */}
+        {/* QUICK ACTIONS */}
+        {/* ============================================ */}
         <div className="quick-actions admin-quick-actions">
           <h3>⚡ Quick Actions</h3>
           <div className="action-grid">
@@ -432,21 +600,42 @@ const AdminDashboard = () => {
                 <span className="badge" style={{ background: '#888' }}>?</span>
               )}
             </Link>
+            <Link to="/admin/alarms" className="quick-action-btn">
+              <span className="action-icon">🚨</span>
+              <span className="action-text">Alarm System</span>
+              {alarmActive && (
+                <span className="badge" style={{ background: '#c62828' }}>!</span>
+              )}
+              {!alarmActive && stats.totalAlarms > 0 && (
+                <span className="badge" style={{ background: '#b8860b' }}>
+                  {stats.totalAlarms}
+                </span>
+              )}
+            </Link>
           </div>
         </div>
 
+        {/* ============================================ */}
+        {/* CONTENT AREA — Nested Routes */}
+        {/* ============================================ */}
         <div className="admin-tab-content">
           <Routes>
             <Route
               path="/"
               element={
-                <AdminHome stats={stats} fpDeviceOnline={fpDeviceOnline} />
+                <AdminHome
+                  stats={stats}
+                  fpDeviceOnline={fpDeviceOnline}
+                  alarmActive={alarmActive}
+                  vibrationToday={vibrationToday}
+                />
               }
             />
             <Route path="/requests" element={<ManageRequests />} />
             <Route path="/products" element={<ManageProducts />} />
             <Route path="/users" element={<ManageUsers />} />
             <Route path="/fingerprints" element={<ManageFingerprints />} />
+            <Route path="/alarms" element={<ManageAlarms />} />
           </Routes>
         </div>
       </div>
@@ -454,7 +643,10 @@ const AdminDashboard = () => {
   );
 };
 
-const AdminHome = ({ stats, fpDeviceOnline }) => {
+// ============================================
+// ADMIN HOME COMPONENT
+// ============================================
+const AdminHome = ({ stats, fpDeviceOnline, alarmActive, vibrationToday }) => {
   const { userData } = useAuth();
 
   return (
@@ -508,6 +700,27 @@ const AdminHome = ({ stats, fpDeviceOnline }) => {
                 </span>
               </div>
             </div>
+            <div
+              className="activity-item"
+              style={
+                alarmActive
+                  ? { background: '#fdf2f2', borderLeft: '3px solid #c62828' }
+                  : {}
+              }
+            >
+              <span className="activity-icon">{alarmActive ? '🚨' : '🔕'}</span>
+              <div className="activity-info">
+                <strong>{vibrationToday}</strong>
+                <span>
+                  Vibrations today ·{' '}
+                  {alarmActive ? (
+                    <strong style={{ color: '#c62828' }}>ALARM ACTIVE!</strong>
+                  ) : (
+                    'All quiet'
+                  )}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -529,6 +742,10 @@ const AdminHome = ({ stats, fpDeviceOnline }) => {
             <li>
               <span className="tip-icon">🔐</span>
               <span>Rename fingerprint IDs to match real user names</span>
+            </li>
+            <li>
+              <span className="tip-icon">🚨</span>
+              <span>Check alarm logs daily for suspicious gate activity</span>
             </li>
             <li>
               <span className="tip-icon">📱</span>
