@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../supabaseClient';
-import { useAuth } from '../../context/AuthContext';
 
 const ManageAlarms = () => {
   const [alarms, setAlarms] = useState([]);
@@ -9,10 +8,26 @@ const ManageAlarms = () => {
   const [filter, setFilter] = useState('all');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const { user, userData } = useAuth();
   const [liveAlarm, setLiveAlarm] = useState(false);
+  
+  // Reference to prevent sound from playing multiple times
+  const alarmSoundPlayed = useRef(false);
 
-  // Fetch alarms + status
+  // Play a loud beeping sound when alarm triggers
+  const playAlertSound = () => {
+    try {
+      // You can replace this URL with a local .mp3 file in your public folder
+      // e.g. new Audio('/alarm.mp3')
+      const audio = new Audio('https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg');
+      audio.volume = 1.0; 
+      audio.play().catch((e) => {
+        console.log("Browser blocked audio autoplay until user interacts with page.");
+      });
+    } catch (e) {
+      console.log("Audio error:", e);
+    }
+  };
+
   const fetchAlarms = async () => {
     try {
       const { data, error } = await supabase
@@ -36,7 +51,19 @@ const ManageAlarms = () => {
         .single();
       if (error) throw error;
       setStatus(data);
-      setLiveAlarm(data?.alarm_active || false);
+      
+      // Update live alarm state
+      const isAlarmOn = data?.alarm_active || false;
+      setLiveAlarm(isAlarmOn);
+
+      // Play sound if it just turned on
+      if (isAlarmOn && !alarmSoundPlayed.current) {
+        playAlertSound();
+        alarmSoundPlayed.current = true;
+      } else if (!isAlarmOn) {
+        alarmSoundPlayed.current = false;
+      }
+
     } catch (err) {
       console.error('Error fetching status:', err);
     }
@@ -49,7 +76,7 @@ const ManageAlarms = () => {
     };
     loadAll();
 
-    // Realtime: new alarm logs
+    // Listen for real-time updates in the database
     const logChannel = supabase
       .channel('alarm-logs-realtime')
       .on(
@@ -57,30 +84,27 @@ const ManageAlarms = () => {
         { event: 'INSERT', schema: 'public', table: 'alarm_logs' },
         (payload) => {
           setAlarms((prev) => [payload.new, ...prev].slice(0, 100));
-
-          // Play alert sound for new alarm
-          if (payload.new.event_type === 'ALARM_STARTED') {
-            try {
-              const audio = new Audio(
-                'data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQBvT18AAAA='
-              );
-              audio.volume = 0.5;
-              audio.play().catch(() => {});
-            } catch (e) {}
-          }
         }
       )
       .subscribe();
 
-    // Realtime: gate status
     const statusChannel = supabase
       .channel('gate-status-realtime')
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'gate_status' },
         (payload) => {
+          const isAlarmOn = payload.new.alarm_active || false;
           setStatus(payload.new);
-          setLiveAlarm(payload.new.alarm_active || false);
+          setLiveAlarm(isAlarmOn);
+
+          // Play sound if alarm turned on
+          if (isAlarmOn && !alarmSoundPlayed.current) {
+            playAlertSound();
+            alarmSoundPlayed.current = true;
+          } else if (!isAlarmOn) {
+            alarmSoundPlayed.current = false;
+          }
         }
       )
       .subscribe();
@@ -91,7 +115,6 @@ const ManageAlarms = () => {
     };
   }, []);
 
-  // Mark alarm as resolved
   const handleResolve = async (alarm) => {
     if (!window.confirm('Mark this alarm as resolved?')) return;
     try {
@@ -99,8 +122,7 @@ const ManageAlarms = () => {
         .from('alarm_logs')
         .update({
           resolved: true,
-          resolved_by: user?.id,
-          resolved_by_name: userData?.full_name || 'Admin',
+          resolved_by_name: 'Admin',
           resolved_at: new Date().toISOString(),
         })
         .eq('id', alarm.id);
@@ -118,14 +140,11 @@ const ManageAlarms = () => {
       VIBRATION_DETECTED: 'event-alarm_triggered',
       ALARM_STARTED: 'event-alarm_triggered',
       ALARM_STOPPED: 'event-access_granted',
-      ALARM_MANUAL_STOP: 'event-access_granted',
-      TEST_TRIGGERED: 'event-gate_opened',
     };
     return `event-badge ${map[type] || 'event-system_online'}`;
   };
 
-  const filteredAlarms =
-    filter === 'all'
+  const filteredAlarms = filter === 'all'
       ? alarms
       : filter === 'unresolved'
       ? alarms.filter((a) => !a.resolved)
@@ -144,16 +163,13 @@ const ManageAlarms = () => {
 
   return (
     <div className="admin-alarms">
-      {/* Live Alarm Banner */}
+      {/* 🚨 LIVE ALARM BANNER 🚨 */}
       {liveAlarm && (
-        <div className="alarm-banner">
-          <span className="alarm-icon">🚨</span>
+        <div className="alarm-banner" style={{ backgroundColor: '#c62828', animation: 'alarmBannerPulse 1s infinite' }}>
+          <span className="alarm-icon" style={{ fontSize: '40px' }}>🚨</span>
           <div className="alarm-text">
-            <strong>ALARM ACTIVE</strong>
-            <span>
-              Vibration detected! The alarm is currently sounding on{' '}
-              {status?.device_id || 'the device'}.
-            </span>
+            <strong style={{ color: 'white', fontSize: '20px' }}>ALARM TRIGGERED!</strong>
+            <span style={{ color: 'white' }}>The bag was opened without fingerprint authorization.</span>
           </div>
         </div>
       )}
@@ -175,18 +191,6 @@ const ManageAlarms = () => {
           <div className="stat-info">
             <h3>{status?.alarm_active ? 'ALARM' : 'Normal'}</h3>
             <p>Alarm State</p>
-            <span className={`stat-change ${status?.alarm_active ? 'danger' : 'positive'}`}>
-              {status?.alarm_active ? 'Actively sounding' : 'Quiet'}
-            </span>
-          </div>
-        </div>
-
-        <div className="stat-card admin-stat-card">
-          <div className="stat-icon">🔓</div>
-          <div className="stat-info">
-            <h3>{status?.gate_open ? 'Open' : 'Closed'}</h3>
-            <p>Gate State</p>
-            <span className="stat-change positive">Current</span>
           </div>
         </div>
 
@@ -194,8 +198,7 @@ const ManageAlarms = () => {
           <div className="stat-icon">📳</div>
           <div className="stat-info">
             <h3>{status?.vibration_count_today || 0}</h3>
-            <p>Vibrations Today</p>
-            <span className="stat-change warning">Since midnight</span>
+            <p>Triggers Today</p>
           </div>
         </div>
 
@@ -204,47 +207,8 @@ const ManageAlarms = () => {
           <div className="stat-info">
             <h3>{status?.device_online ? 'Online' : 'Offline'}</h3>
             <p>Device</p>
-            <span className={`stat-change ${status?.device_online ? 'positive' : 'danger'}`}>
-              {status?.last_heartbeat
-                ? new Date(status.last_heartbeat).toLocaleTimeString()
-                : '—'}
-            </span>
           </div>
         </div>
-      </div>
-
-      {/* Filters */}
-      <div className="log-filter">
-        <button
-          className={filter === 'all' ? 'active' : ''}
-          onClick={() => setFilter('all')}
-        >
-          All ({alarms.length})
-        </button>
-        <button
-          className={filter === 'unresolved' ? 'active' : ''}
-          onClick={() => setFilter('unresolved')}
-        >
-          ⚠️ Unresolved ({unresolvedCount})
-        </button>
-        <button
-          className={filter === 'ALARM_STARTED' ? 'active' : ''}
-          onClick={() => setFilter('ALARM_STARTED')}
-        >
-          🚨 Alarms
-        </button>
-        <button
-          className={filter === 'VIBRATION_DETECTED' ? 'active' : ''}
-          onClick={() => setFilter('VIBRATION_DETECTED')}
-        >
-          📳 Vibrations
-        </button>
-        <button
-          className={filter === 'ALARM_STOPPED' ? 'active' : ''}
-          onClick={() => setFilter('ALARM_STOPPED')}
-        >
-          🔕 Stopped
-        </button>
       </div>
 
       {/* Logs Table */}
@@ -272,12 +236,8 @@ const ManageAlarms = () => {
                 <tr key={alarm.id} className={!alarm.resolved ? 'log-alarm_triggered' : ''}>
                   <td>
                     <div className="date-info">
-                      <div className="date-main">
-                        {new Date(alarm.created_at).toLocaleDateString()}
-                      </div>
-                      <div className="date-time">
-                        {new Date(alarm.created_at).toLocaleTimeString()}
-                      </div>
+                      <div className="date-main">{new Date(alarm.created_at).toLocaleDateString()}</div>
+                      <div className="date-time">{new Date(alarm.created_at).toLocaleTimeString()}</div>
                     </div>
                   </td>
                   <td>
@@ -285,28 +245,18 @@ const ManageAlarms = () => {
                       {alarm.event_type.replace(/_/g, ' ')}
                     </span>
                   </td>
-                  <td>
-                    <small>{alarm.device_id || '—'}</small>
-                  </td>
+                  <td><small>{alarm.device_id || '—'}</small></td>
                   <td>{alarm.details || '—'}</td>
                   <td>
                     {alarm.resolved ? (
-                      <span className="status-active">
-                        ✅ Resolved
-                        {alarm.resolved_by_name && (
-                          <small> by {alarm.resolved_by_name}</small>
-                        )}
-                      </span>
+                      <span className="status-active">✅ Resolved</span>
                     ) : (
                       <span className="status-restricted">⚠️ Unresolved</span>
                     )}
                   </td>
                   <td>
                     {!alarm.resolved && (
-                      <button
-                        className="btn-approve"
-                        onClick={() => handleResolve(alarm)}
-                      >
+                      <button className="btn-approve" onClick={() => handleResolve(alarm)}>
                         ✅ Resolve
                       </button>
                     )}
