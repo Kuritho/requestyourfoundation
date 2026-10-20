@@ -4971,3 +4971,115 @@ body {
     padding: 8px 10px;
   }
 }
+
+/* ============================================
+   ALARM SYSTEM
+   ============================================ */
+
+.alarm-banner {
+  background: linear-gradient(135deg, #c62828, #8e0000);
+  color: white;
+  padding: 16px 24px;
+  border-radius: var(--radius-md);
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 8px 32px rgba(198, 40, 40, 0.4);
+  animation: alarmBannerPulse 1.5s ease-in-out infinite;
+  flex-wrap: wrap;
+}
+
+@keyframes alarmBannerPulse {
+  0%, 100% {
+    box-shadow: 0 8px 32px rgba(198, 40, 40, 0.4);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 8px 48px rgba(198, 40, 40, 0.7);
+    transform: scale(1.01);
+  }
+}
+
+.alarm-banner .alarm-icon {
+  font-size: 36px;
+  animation: alarmIconShake 0.5s ease-in-out infinite;
+}
+
+@keyframes alarmIconShake {
+  0%, 100% { transform: rotate(-10deg); }
+  50% { transform: rotate(10deg); }
+}
+
+.alarm-banner .alarm-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.alarm-banner .alarm-text strong {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.alarm-banner .alarm-text span {
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+.alarm-banner .alarm-action-btn {
+  background: white;
+  color: #c62828;
+  padding: 10px 20px;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 14px;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.alarm-banner .alarm-action-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.admin-alarms {
+  padding: 0;
+}
+
+/* Alarm rows pulse */
+.log-alarm_triggered {
+  background: #fdf8f8 !important;
+  border-left: 4px solid var(--error) !important;
+}
+
+/* Mobile */
+@media (max-width: 480px) {
+  .alarm-banner {
+    padding: 14px 16px;
+    gap: 10px;
+  }
+  .alarm-banner .alarm-icon {
+    font-size: 28px;
+  }
+  .alarm-banner .alarm-text strong {
+    font-size: 15px;
+  }
+  .alarm-banner .alarm-text span {
+    font-size: 12px;
+  }
+  .alarm-banner .alarm-action-btn {
+    width: 100%;
+    text-align: center;
+    padding: 8px 16px;
+    font-size: 13px;
+  }
+}
+
+@keyframes alarmBannerPulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 20px rgba(198, 40, 40, 0.8); }
+  50% { transform: scale(1.02); box-shadow: 0 0 40px rgba(198, 40, 40, 1); }
+}
